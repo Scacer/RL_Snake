@@ -15,7 +15,8 @@ class Agent:
         self.epsilon = 0 # randomness controlling parameter
         self.gamme = 0 # discount rate
         self.memory = deque(maxlen=MAX_MEMORY) # popleft() if exceeding 100,000 items
-        #TODO: model, trainer
+        self.model = None #TODO
+        self.trainer = None #TODO
 
     def get_state(self, game):
         head = game.snake[0]
@@ -24,14 +25,76 @@ class Agent:
         point_u = Point(head.x, head.y - 20)
         point_d = Point(head.x, head.y + 20)
 
+        dir_l = game.direction == Direction.LEFT
+        dir_r = game.direction == Direction.RIGHT
+        dir_u = game.direction == Direction.UP
+        dir_d = game.direction == Direction.DOWN
+
+        state = [
+            #Danger straight
+            (dir_r and game.is_collision(point_r)) or
+            (dir_l and game.is_collision(point_l)) or
+            (dir_u and game.is_collision(point_u)) or
+            (dir_d and game.is_collision(point_d)),
+
+            #Danger right
+            (dir_u and game.is_collision(point_r)) or
+            (dir_d and game.is_collision(point_l)) or
+            (dir_l and game.is_collision(point_u)) or
+            (dir_r and game.is_collision(point_d)),
+
+            #Danger Left
+            (dir_d and game.is_collision(point_r)) or
+            (dir_u and game.is_collision(point_l)) or
+            (dir_r and game.is_collision(point_u)) or
+            (dir_l and game.is_collision(point_d)),
+
+            #Move direction
+            dir_l,
+            dir_r,
+            dir_u,
+            dir_d,
+
+            #Food location
+            game.food.x < game.head.x # food left
+            game.food.x > game.head.x # food right
+            game.food.y < game.head.y # food up
+            game.food.y > game.head.y # food down
+            ]
+
+        return np.array(state, dtype=int) #Converts True/False values into 1s and 0s
+            
+
     def remember(self, state, action, reward, next_state, done): #done = game over state
-        pass
+        self.memory.append((state, action, reward, next_state, done)) # popleft if MAX_MEMORY is reached
+
+    def train_long_memory(self):
+        if len(self.memory) > BATCH_SIZE: #checks whether the batch size has even occured yet
+            mini_sample = random.sample(self.memoru, BATCH_SIZE) #list of tuples from memory
+        else:
+            mini_sample = self.memory #takes entire memory as sample
+
+        states, actions, rewards, next_states, dones = zip(*mini_sample) #extracts each state, action, reward, next state, end state from mini_sample
+        self.trainer.train_step(states, actions, rewards, next_states, dones)
 
     def train_short_memory(self, state, action, reward, next_state, done):
-        pass
+        self.trainer.train_step(state, action, reward, next_state, done)
 
     def get_action(self, state):
-        pass
+        #random moves: tradeoff between exploration / exploitation
+        self.epsilon = 80 - self.n_games            #The further the game goes
+        final_move = [0, 0, 0]                      #the less often a random move
+        if random.randint(0, 200) < self.epsilon:   #will occur.
+            move = random.randint(0, 2)
+            final_move[move] = 1
+        else:
+            state0 = torch.tensor(state, dtype=torch.float)
+            prediction = self.model.predict(state0)
+            move = torch.argmax(prediction).item()
+            final_move[move] = 1
+
+        return final_move
+    
 
 def train():
     plot_scores = []
